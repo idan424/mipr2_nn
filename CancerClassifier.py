@@ -7,7 +7,7 @@ sub = '\\mipr_project\\ms_classification_project\\training\\'
 
 N_hidden = 10
 mini_batch_size = 32
-STEP_SIZE = 1e-5
+STEP_SIZE = 1e-7
 
 
 def mod_relu(x):
@@ -39,7 +39,7 @@ class CancerClassifier:
         self.w2 = np.random.randn(1, N_hidden)
         self.b2 = np.random.randn(1, mini_batch_size)
 
-    def mini_batch_step(self, x=None, y=None):
+    def mini_batch_step(self, x=None, y=None, train=False):
         # x of size 1024*mini_batch_size
         # y of size 1*mini_batch_size
 
@@ -49,8 +49,13 @@ class CancerClassifier:
         z2 = np.dot(self.w2, a1) + self.b2
         a2 = np.vectorize(sigmoid)(z2)
 
-        cost = self.cost(a2, y)
+        cost = (a2 - y) ** 2
 
+        if train:
+            acc = self.backpropagate(cost, a2, y, z2, a1, z1, x)
+            print(f'cost: {np.mean(np.sqrt(cost))}, accuracy:{acc}')
+
+    def backpropagate(self, cost, a2, y, z2, a1, z1, x):
         dc_da2 = 2 * (a2 - y)  # dC/da2
         da2_dz2 = np.vectorize(dsigmoid)(z2)  # da2/dz2
         # dz2/dw2 = a1
@@ -71,8 +76,8 @@ class CancerClassifier:
         self.update(dw1, db1, dw2, db2)
 
         acc = 1 - np.sum(abs(y - np.vectorize(round)(a2))) / mini_batch_size
+        return acc
 
-        print(f'cost: {np.mean(np.sqrt(cost))}, accuracy:{acc}')
 
     def update(self, dw1, db1, dw2, db2):
         self.w1 = self.w1 - dw1 * STEP_SIZE
@@ -87,19 +92,17 @@ class CancerClassifier:
             start = i * mini_batch_size
             end = (i + 1) * mini_batch_size
             # print(f'batch number{i}')
-            self.mini_batch_step(x_trn[:, start:end], y_trn[start:end])
+            self.mini_batch_step(x_trn[:, start:end], y_trn[start:end], train=True)
         if rem > 0: self.mini_batch_step(x_trn[:, end:end + rem], y_trn[end:end + rem])
         pass
 
-    def run(self, n_epoch):
+    def train_for(self, n_epoch):
         for i in range(n_epoch):
             print('##########################################')
             print(f'epoch # {i + 1}')
             print('##########################################')
             self.go_over_data(*self.trn_data)
 
-    def cost(self, a2, y):
-        return (a2 - y) ** 2
 
     # TODO: make it work
     def validate(self):
@@ -110,7 +113,8 @@ class CancerClassifier:
         z2 = np.dot(self.w2, a1) + self.b2
         a2 = np.vectorize(sigmoid)(z2)
 
-        cost = self.cost(a2, y)
+        cost = (a2 - y)
+
 
 def data_load():
     trn_path = path + '/mipr_project/ms_classification_project/training/'
@@ -148,6 +152,6 @@ if __name__ == "__main__":
     cc = CancerClassifier(*data_load())
     # cc.mini_batch_step(x_train[:, 256 - int(mini_batch_size / 2):256 + int(mini_batch_size / 2)],
     #                    y_train[256 - int(mini_batch_size / 2):256 + int(mini_batch_size / 2)])
-    cc.run(10)
+    cc.train_for(10)
     # cc.validate()
     self = cc
