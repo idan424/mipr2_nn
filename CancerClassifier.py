@@ -40,9 +40,10 @@ class CancerClassifier:
         self.b2 = np.random.randn(1, mini_batch_size)
 
     def mini_batch_step(self, x=None, y=None, train=False):
-        # x of size 1024*mini_batch_size
-        # y of size 1*mini_batch_size
-
+        """
+            x of size 1024*mini_batch_size
+            y of size 1*mini_batch_size
+        """
         z1 = np.dot(self.w1, x) + self.b1
         a1 = np.vectorize(mod_relu)(z1)
 
@@ -56,11 +57,16 @@ class CancerClassifier:
             print(f'cost: {np.mean(np.sqrt(cost))}, accuracy:{acc}')
 
     def backpropagate(self, cost, a2, y, z2, a1, z1, x):
-        dc_da2 = 2 * (a2 - y)  # dC/da2
-        da2_dz2 = np.vectorize(dsigmoid)(z2)  # da2/dz2
+        # dC/da2
+        dc_da2 = 2 * (a2 - y)
+        # da2/dz2
+        da2_dz2 = np.vectorize(dsigmoid)(z2)
         # dz2/dw2 = a1
-        dz2_da1 = self.w2.T  # dz2/da1
-        da1_dz1 = np.vectorize(dmod_relu)(z1)  # da1/dz1
+
+        # dz2/da1
+        dz2_da1 = self.w2.T
+        # da1/dz1
+        da1_dz1 = np.vectorize(dmod_relu)(z1)
         # dz1/dw1 = x
 
         # dC/dw2 = dC/da2 * da2/dz2 * dz2/dw2
@@ -77,7 +83,6 @@ class CancerClassifier:
 
         acc = 1 - np.sum(abs(y - np.vectorize(round)(a2))) / mini_batch_size
         return acc
-
 
     def update(self, dw1, db1, dw2, db2):
         self.w1 = self.w1 - dw1 * STEP_SIZE
@@ -102,7 +107,6 @@ class CancerClassifier:
             print(f'epoch # {i + 1}')
             print('##########################################')
             self.go_over_data(*self.trn_data)
-
 
     # TODO: make it work
     def validate(self):
