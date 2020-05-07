@@ -2,9 +2,12 @@ from util import *
 
 # np.random.seed(11)  # seed for reproducability - will be deprecated
 
-N_hidden = 4
-mini_batch_size = 32
-STEP_SIZE = 1e-2
+N_hidden = 4  # bigger is slower
+mini_batch_size = 32  # bigger is faster
+STEP_SIZE = 1e-3
+
+tot_ep = 1000  # total number of epochs
+ep_per_run = 20  # epochs between loss check
 
 
 class CancerClassifier:
@@ -20,68 +23,62 @@ class CancerClassifier:
         self.w2 = np.random.randn(1, N_hidden)
         self.b2 = np.random.randn(1, 1)
 
-    def mini_batch_step(self, x=None, y=None, train=False):
+    def train_batch(self, x, y):
         """
             x shape =  [1024, mini_batch_size]
             y shape =  [1, mini_batch_size]
         """
+        # layer 1 - input
         z1 = np.dot(self.w1, x) + self.b1
         a1 = np.vectorize(mod_relu)(z1)
 
+        # layer 2 - hidden
         z2 = np.dot(self.w2, a1) + self.b2
         a2 = np.vectorize(sigmoid)(z2)
 
-        diff = a2 - y
-        cost = diff ** 2
-        loss = np.sqrt(cost)
-        a2rnd = np.vectorize(round)(a2)
-        acc_diff = abs(y - a2rnd)
+        # layer 3 - output
+        y_pred = np.vectorize(round)(a2)
+
+        loss = np.sum((a2 - y) ** 2) / mini_batch_size
+        acc_diff = abs(y - y_pred)
         acc = 1 - (np.sum(acc_diff) / mini_batch_size)
 
-        if train:
-            self.backpropagate(x, y, z1, a1, z2, a2, cost)
-            # print(f'mini_bach_cost: {np.mean(loss)}, mini_bach_accuracy:{acc}')
+        self.backpropagate(x, y, z1, a1, z2, a2)
 
-        return np.mean(loss), acc
+        return loss, acc
 
-    def backpropagate(self, x, y, z1, a1, z2, a2, cost):
-        # dC/da2
-        dc_da2 = 2 * (a2 - y)
+    def backpropagate(self, x, y, z1, a1, z2, a2):
+        # general gradients
+        dc_da2 = 2 * (a2 - y)  # dC/da2
+        da2_dz2 = np.vectorize(dsigmoid)(z2)  # da2/dz2
+        dz2_da1 = self.w2.T  # dz2/da1
+        da1_dz1 = np.vectorize(dmod_relu)(z1)  # da1/dz1
 
-        # da2/dz2
-        da2_dz2 = np.vectorize(dsigmoid)(z2)
+        # layer gradients
+        dz2_dw2 = a1.T  # dz2/dw2
+        dz2_db2 = np.ones([mini_batch_size, 1])  # dz2/db2
+        dz1_dw1 = x.T  # dz1/dw1
+        dz1_db1 = np.ones([mini_batch_size, 1])  # dz1/db1
 
-        # dz2/dw2
-        dz2_dw2 = a1.T
-        # dz2/db2 = 1
+        # layer 2 gradients
+        dw2 = np.dot(dc_da2 * da2_dz2, dz2_dw2)  # dC/dw2 = dC/da2 * da2/dz2 * dz2/dw2
+        db2 = np.dot(dc_da2 * da2_dz2, dz2_db2)  # dC/db2 = dC/da2 * da2/dz2 * dz2/db2
 
-        # dz2/da1
-        dz2_da1 = self.w2.T
+        # layer to layer gradient
+        dc_da1 = np.dot(dz2_da1, dc_da2 * da2_dz2)
 
-        # da1/dz1
-        da1_dz1 = np.vectorize(dmod_relu)(z1)
+        # layer 1 gradients
+        dw1 = np.dot(dc_da1 * da1_dz1, dz1_dw1)  # dC/dw1 = dC/da1 * da1/dz1 * dz1/dw1
+        db1 = np.dot(dc_da1 * da1_dz1, dz1_db1)  # dC/db1 = dC/da1 * da1/dz1 * dz1/db1
 
-        # dz1/dw1
-        dz1_dw1 = x.T  # dz1/db1 = 1
-
-
-
-
-        # dC/dw2 = dC/da2 * da2/dz2 * dz2/dw2
-        dw2 = np.dot(dc_da2 * da2_dz2, dz2_dw2)
-
-        # dC/db2 = dC/da2 * da2/dz2 * dz2/db2
-        db2 = np.mean(dc_da2 * da2_dz2, axis=1).reshape(1, 1)
-
-        # dC/dw1 = dC/da2 * da2/dz2 * dz2/da1 * da1/dz1 * dz1/dw1
-        dw1 = np.dot(np.dot(dz2_da1, dc_da2 * da2_dz2) * da1_dz1, dz1_dw1)
-
-        # dC/db1 = dC/da2 * da2/dz2 * dz2/da1 * da1/dz1 * dz1/db1
-        db1 = np.mean(dc_da2 * da2_dz2 * dz2_da1 * da1_dz1, axis=1).reshape(N_hidden, 1)
-
+        # actual descent
         self.update(dw1, db1, dw2, db2)
 
     def update(self, dw1, db1, dw2, db2):
+        for d in [dw1, db1, dw2, db2]:
+            for i in range(d.shape[0]):
+                for j in range(d.shape[1]):
+                    if d[i, j] < 1e-9: d[i, j] = 0
         self.w1 = self.w1 - dw1 * self.STEP_SIZE
         self.w2 = self.w2 - dw2 * self.STEP_SIZE
         self.b1 = self.b1 - db1 * self.STEP_SIZE
@@ -93,8 +90,8 @@ class CancerClassifier:
         for i in range(num_batch):
             start = i * mini_batch_size
             end = (i + 1) * mini_batch_size
-            l_mb, acc_mb = self.mini_batch_step(x_trn[:, start:end], y_trn[start:end], train=True)
-            loss.append(l_mb), acc.append(acc_mb)
+            l, a = self.train_batch(x_trn[:, start:end], y_trn[start:end])
+            loss.append(l), acc.append(a)
 
         # print(f'total loss:{np.mean(loss)}, total accuracy:{np.mean(acc)}')
 
@@ -115,16 +112,16 @@ class CancerClassifier:
         loss, acc = [], []
         xs, ys = self.val_data
         for x, y in zip(xs.T, ys):
-            l, a = self.val_sample(x, y)
+            l, a = self.val_sample(x.reshape([len(x), 1]), y)
             loss.append(l), acc.append(a)
-        print(f'total val loss: {np.mean(loss)}, total val accuracy: {np.mean(acc)}')
+        print(f'total val loss: {np.mean(loss)}, total val accuracy: {np.mean(acc)}\n')
         return np.mean(loss), np.mean(acc)
 
     def val_sample(self, x, y):
-        z1 = np.dot(self.w1, x) + np.mean(self.b1)
+        z1 = np.dot(self.w1, x)  # + self.b1
         a1 = np.vectorize(mod_relu)(z1)
 
-        z2 = np.dot(self.w2, a1) + np.mean(self.b2)
+        z2 = np.dot(self.w2, a1) + self.b2
         a2 = np.vectorize(sigmoid)(z2)
 
         cost = (a2 - y) ** 2
@@ -137,14 +134,12 @@ class CancerClassifier:
 if __name__ == "__main__":
     cc = CancerClassifier(*data_load(os.getcwd()))
 
-    tot_ep = 500
-    ep_per_run = 25
-
     trn_loss, trn_acc, val_loss, val_acc = [], [], [], []
     for _ in range(int(tot_ep / ep_per_run)):
         tl, ta = cc.train_for(ep_per_run)
         vl, va = cc.validate()
         trn_loss.append(tl), trn_acc.append(ta), val_loss.append(vl), val_acc.append(va)
 
-    plt.figure(), plt.plot(trn_loss, label='train'), plt.plot(val_loss, label='validation'), plt.legend(), plt.show()
+    plt.figure(), plt.plot(trn_loss, label='train'), plt.plot(val_loss, label='validation')
+    plt.title("loss"), plt.legend(), plt.show()
     self = cc
