@@ -1,14 +1,16 @@
 from util import *
 
+# np.random.seed(11)
+
 # initializing hyper parameters here
 N_hidden = 12  # bigger is slower
 mini_batch_size = 32  # bigger is faster
-STEP_SIZE = 2e-3  # changes with respect to validation loss - see CancerClassifier.validate()
+STEP_SIZE = 1e-3  # changes with respect to validation loss - see CancerClassifier.validate()
 epochs = 600  # total number of epochs
 
 # calling activation functions
-f1, df1 = np.vectorize(mod_relu), np.vectorize(dmod_relu)  # acts on z1
-f2, df2 = np.vectorize(sigmoid) , np.vectorize(dsigmoid)  # acts on z2
+f1, df1 = np.vectorize(leaky_relu), np.vectorize(dleaky_relu)  # acts on z1
+f2, df2 = np.vectorize(sigmoid), np.vectorize(dsigmoid)  # acts on z2
 
 
 class CancerClassifier(object):
@@ -103,35 +105,58 @@ class CancerClassifier(object):
 
         # computing loss and accuracy
         loss = np.mean(floss(a2, y))
-        acc = np.mean(1 - abs(a2 - y))
+        acc = np.mean(1 - abs(y - np.vectorize(round)(a2)))
 
         # loss-sensetive step size
-        self.step_correct(loss)
+        # self.step_correct(loss)    ->    it actually works better with no step correct
 
         print(f'total val loss: {loss:.5f}, total val accuracy: {acc:.5f}\n')
         return loss, acc
 
     def step_correct(self, loss):
-        if loss < 0.3: self.STEP_SIZE = 1e-3
         if loss < 0.15: self.STEP_SIZE = 5e-4
         if loss < 0.075: self.STEP_SIZE = 2.5e-4
 
+    def to_json(self, va, filename=None):
+        # this function saves a json version of the dict in to a file
+        import json
+        import datetime as dt
+        trained_dict = {
+            'weights': (self.w1.tolist(), self.w2.tolist()),
+            'biases': (self.b1.tolist(), self.b2.tolist()),
+            'nn_dim': N_hidden,
+            'actication1': 'leaky_relu',
+            'actication2': 'sigmoid',
+            'IDs': ('305713034', '207127986')}
+        if filename is None: filename = f'models/model_{dt.datetime.now().strftime("%d-%m-%Y_%H-%M-%S")}_val_acc_{va:.3f}'
+        with open(filename, 'w') as f:
+            json.dump(trained_dict, f)
 
-if __name__ == "__main__":
-    cc = CancerClassifier(*data_load(os.getcwd()))
 
-    trn_loss, trn_acc, val_loss, val_acc = [], [], [], []
+def ploting(tl, ta, vl, va):
+    # this plots the loss and accuracy
+    plt.figure(), plt.subplot(211)
+    plt.plot(tl, label='train'), plt.plot(vl, label='validation')
+    plt.title("loss"), plt.legend(), plt.xlabel("epochs"), plt.ylabel("precents")
+    plt.subplot(212)
+    plt.plot(ta, label='train'), plt.plot(va, label='validation')
+    plt.title("acc"), plt.legend(), plt.xlabel("epochs"), plt.ylabel("precents")
+    plt.show()
+
+
+def run_epochs(epochs, trn_loss, trn_acc, val_loss, val_acc):
     for e in range(epochs):
         print(f"run number: {e + 1}/{epochs}")
         tl, ta = cc.epoch()
         vl, va = cc.validate()
         trn_loss.append(tl), trn_acc.append(ta), val_loss.append(vl), val_acc.append(va)
+    return trn_loss, trn_acc, val_loss, val_acc
 
-    plt.figure(), plt.subplot(211)
-    plt.plot(trn_loss, label='train'), plt.plot(val_loss, label='validation')
-    plt.title("loss"), plt.legend(), plt.xlabel("epochs"), plt.ylabel("precents")
-    plt.subplot(212)
-    plt.plot(trn_acc, label='train'), plt.plot(val_acc, label='validation')
-    plt.title("acc"), plt.legend(), plt.xlabel("epochs"), plt.ylabel("precents")
-    plt.show()
-    # self = cc
+
+if __name__ == "__main__":
+    cc = CancerClassifier(*data_load(os.getcwd()))
+    trn_loss, trn_acc, val_loss, val_acc = [], [], [], []
+    trn_loss, trn_acc, val_loss, val_acc = run_epochs(epochs, trn_loss, trn_acc, val_loss, val_acc)
+    # trn_loss, trn_acc, val_loss, val_acc = run_epochs(100, trn_loss, trn_acc, val_loss, val_acc)
+    # cc.to_json(val_acc[-1])
+    ploting(trn_loss, trn_acc, val_loss, val_acc)

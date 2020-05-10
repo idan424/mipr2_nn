@@ -38,12 +38,12 @@ def drelu(x):
     return 1
 
 
-def mod_relu(x):
+def leaky_relu(x):
     if x <= 0: return 0.1 * x
     return x
 
 
-def dmod_relu(x):
+def dleaky_relu(x):
     if x <= 0: return 0.1
     return 1
 
