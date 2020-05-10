@@ -2,15 +2,13 @@ import numpy as np
 import os
 import matplotlib.pyplot as plt
 
+mean = lambda x: sum(x) / len(x)
+floss, dfloss = lambda y, yp: (y - yp) ** 2, lambda y, yp: (y - yp) * 2
+
 
 def data_load(path):
-    trn_path = path + '/ms_classification_project/training/'
-    val_path = path + '/ms_classification_project/validation/'
-
-    x_trn, y_trn = load_dir(trn_path)
-    x_trn, y_trn = randomize(x_trn, y_trn)
-
-    x_val, y_val = load_dir(val_path)
+    x_trn, y_trn = load_dir(path + '/ms_classification_project/training/')
+    x_val, y_val = load_dir(path + '/ms_classification_project/validation/')
 
     return x_trn, y_trn, x_val, y_val
 
@@ -22,15 +20,12 @@ def randomize(x, y):
 
 
 def load_dir(path):
-    name_list = os.listdir(path)
-    X, Y = [], []
-    for name in name_list:
-        x = plt.imread(path + name)
-        y = 0
-        if 'pos' in name: y = 1
-        X.append(x.flatten())
-        Y.append(y)
-    return np.array(X).T, np.array(Y)
+    picture_list = os.listdir(path)
+    X, Y = np.ndarray([1024, 0]), []
+    for pic in picture_list:
+        X = np.c_[X, plt.imread(path + pic).flatten().reshape([1024, 1])]
+        Y.append(int('pos' in pic))
+    return X, np.array(Y)
 
 
 def relu(x):
