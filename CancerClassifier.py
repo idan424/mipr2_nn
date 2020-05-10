@@ -1,26 +1,40 @@
 from util import *
 
-# np.random.seed(11)  # seed for reproducability - will be deprecated
+# np.random.seed(1)  # seed for reproducability - will be deprecated
 
-N_hidden = 4  # bigger is slower
+N_hidden = 16  # bigger is slower
 mini_batch_size = 32  # bigger is faster
 STEP_SIZE = 1e-3
+min_th = 1e-9
 
-tot_ep = 1000  # total number of epochs
-ep_per_run = 20  # epochs between loss check
+tot_ep = 400  # total number of epochs
+
+f1 = np.vectorize(mod_relu)  # acts on z1
+df1 = np.vectorize(dmod_relu)
+
+f2 = np.vectorize(sigmoid)  # acts on z2
+df2 = np.vectorize(dsigmoid)
+
+f3 = np.vectorize(sigmoid)  # acts on a2
+
+mean = lambda x: sum(x) / len(x)
+vround = np.vectorize(round)
+
+floss = lambda y, yp: (yp - y) ** 2
+dfloss = lambda y, yp: (yp - y) * 2
 
 
-class CancerClassifier:
+class CancerClassifier(object):
     def __init__(self, x_trn, y_trn, x_val, y_val):
         self.STEP_SIZE = STEP_SIZE
 
         self.trn_data = x_trn, y_trn
         self.val_data = x_val, y_val
 
-        self.w1 = np.random.randn(N_hidden, 1024)
+        self.w1 = np.random.randn(N_hidden, 1024)  # / 1024
         self.b1 = np.random.randn(N_hidden, 1)
 
-        self.w2 = np.random.randn(1, N_hidden)
+        self.w2 = np.random.randn(1, N_hidden)  # / N_hidden
         self.b2 = np.random.randn(1, 1)
 
     def train_batch(self, x, y):
@@ -30,18 +44,17 @@ class CancerClassifier:
         """
         # layer 1 - input
         z1 = np.dot(self.w1, x) + self.b1
-        a1 = np.vectorize(mod_relu)(z1)
+        a1 = f1(z1)
 
         # layer 2 - hidden
         z2 = np.dot(self.w2, a1) + self.b2
-        a2 = np.vectorize(sigmoid)(z2)
+        a2 = f2(z2)
 
         # layer 3 - output
-        y_pred = np.vectorize(round)(a2)
+        y_pred = vround(a2)  # np.vectorize(thresh)
 
-        loss = np.sum((a2 - y) ** 2) / mini_batch_size
-        acc_diff = abs(y - y_pred)
-        acc = 1 - (np.sum(acc_diff) / mini_batch_size)
+        loss = np.mean(floss(a2, y))
+        acc = 1 - np.sum(abs(y - y_pred)) / mini_batch_size
 
         self.backpropagate(x, y, z1, a1, z2, a2)
 
@@ -49,10 +62,10 @@ class CancerClassifier:
 
     def backpropagate(self, x, y, z1, a1, z2, a2):
         # general gradients
-        dc_da2 = 2 * (a2 - y)  # dC/da2
-        da2_dz2 = np.vectorize(dsigmoid)(z2)  # da2/dz2
+        dc_da2 = 2 * (y - a2)  # dC/da2
+        da2_dz2 = df2(z2)  # da2/dz2
         dz2_da1 = self.w2.T  # dz2/da1
-        da1_dz1 = np.vectorize(dmod_relu)(z1)  # da1/dz1
+        da1_dz1 = df1(z1)  # da1/dz1
 
         # layer gradients
         dz2_dw2 = a1.T  # dz2/dw2
@@ -75,71 +88,73 @@ class CancerClassifier:
         self.update(dw1, db1, dw2, db2)
 
     def update(self, dw1, db1, dw2, db2):
-        for d in [dw1, db1, dw2, db2]:
-            for i in range(d.shape[0]):
-                for j in range(d.shape[1]):
-                    if d[i, j] < 1e-9: d[i, j] = 0
-        self.w1 = self.w1 - dw1 * self.STEP_SIZE
-        self.w2 = self.w2 - dw2 * self.STEP_SIZE
-        self.b1 = self.b1 - db1 * self.STEP_SIZE
-        self.b2 = self.b2 - db2 * self.STEP_SIZE
+        self.w1 = self.w1 + dw1 * self.STEP_SIZE
+        self.w2 = self.w2 + dw2 * self.STEP_SIZE
+        self.b1 = self.b1 + db1 * self.STEP_SIZE
+        self.b2 = self.b2 + db2 * self.STEP_SIZE
 
     def epoch(self, x_trn, y_trn):
         num_batch = int(len(y_trn) / mini_batch_size)
+
         loss, acc = [], []
         for i in range(num_batch):
             start = i * mini_batch_size
             end = (i + 1) * mini_batch_size
             l, a = self.train_batch(x_trn[:, start:end], y_trn[start:end])
             loss.append(l), acc.append(a)
-
-        # print(f'total loss:{np.mean(loss)}, total accuracy:{np.mean(acc)}')
-
         if np.mean(loss) < 0.1: self.STEP_SIZE = 1e-3
+        return mean(loss), mean(acc)
 
-        return np.mean(loss), np.mean(acc)
+    def train_for(self):
+        self.trn_data = randomize(*self.trn_data)
+        loss, acc = self.epoch(*self.trn_data)
+        print(f'epoch loss: {np.mean(loss):.5f}, epoch accuracy: {np.mean(acc):.5f}')
+        return loss, acc
 
-    def train_for(self, n_epoch):
-        loss, acc = [], []
-        for i in range(n_epoch):
-            # print(f'epoch #{i + 1}')
-            l_ep, a_ep = self.epoch(*self.trn_data)
-            loss.append(l_ep), acc.append(a_ep)
-        print(f'{n_epoch} epochs loss: {np.mean(loss)}, {n_epoch} epochs accuracy: {np.mean(acc)}')
-        return np.mean(loss), np.mean(acc)
+    def val_sample(self, x, y):
+        # layer 1
+        z1 = np.dot(self.w1, x) + self.b1
+        a1 = f1(z1)
+
+        # layer 2
+        z2 = np.dot(self.w2, a1) + self.b2
+        a2 = f2(z2)
+
+        # layer 3
+        y_pred = f3(a2)
+
+        loss = np.mean(floss(a2, y))
+        acc = 1 - abs(a2 - y)
+        return loss, acc
 
     def validate(self):
         loss, acc = [], []
         xs, ys = self.val_data
-        for x, y in zip(xs.T, ys):
-            l, a = self.val_sample(x.reshape([len(x), 1]), y)
-            loss.append(l), acc.append(a)
-        print(f'total val loss: {np.mean(loss)}, total val accuracy: {np.mean(acc)}\n')
+
+        # for x, y in zip(xs.T, ys):
+        #     l, a = self.val_sample(x.reshape([len(x), 1]), y)
+        #     if l < min_th: l = 0
+        #     loss.append(l), acc.append(a)
+
+        loss, acc = self.val_sample(xs, ys)
+
+        print(f'total val loss: {np.mean(loss):.5f}, total val accuracy: {np.mean(acc):.5f}\n')
         return np.mean(loss), np.mean(acc)
-
-    def val_sample(self, x, y):
-        z1 = np.dot(self.w1, x)  # + self.b1
-        a1 = np.vectorize(mod_relu)(z1)
-
-        z2 = np.dot(self.w2, a1) + self.b2
-        a2 = np.vectorize(sigmoid)(z2)
-
-        cost = (a2 - y) ** 2
-        loss = np.sqrt(cost)
-
-        acc = 1 - abs(y - np.vectorize(round)(a2))
-        return loss[0], acc[0]
 
 
 if __name__ == "__main__":
     cc = CancerClassifier(*data_load(os.getcwd()))
 
     trn_loss, trn_acc, val_loss, val_acc = [], [], [], []
-    for _ in range(int(tot_ep / ep_per_run)):
-        tl, ta = cc.train_for(ep_per_run)
+    for i in range(tot_ep):
+        print(f"run number: {i + 1}/{tot_ep}")
+        tl, ta = cc.train_for()
         vl, va = cc.validate()
         trn_loss.append(tl), trn_acc.append(ta), val_loss.append(vl), val_acc.append(va)
 
     plt.figure(), plt.plot(trn_loss, label='train'), plt.plot(val_loss, label='validation')
     plt.title("loss"), plt.legend(), plt.show()
-    self = cc
+
+    plt.figure(), plt.plot(trn_acc, label='train'), plt.plot(val_acc, label='validation')
+    plt.title("acc"), plt.legend(), plt.show()
+    # self = cc
