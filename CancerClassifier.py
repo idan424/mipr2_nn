@@ -1,7 +1,5 @@
 from util import *
 
-# np.random.seed(11)
-
 # initializing hyper parameters here
 N_hidden = 12  # bigger is slower
 mini_batch_size = 32  # bigger is faster
@@ -20,10 +18,10 @@ class CancerClassifier(object):
         self.trn_data = x_trn, y_trn
         self.val_data = x_val, y_val
 
-        self.w1 = np.random.randn(N_hidden, 1024)  # / 1024
+        self.w1 = np.random.randn(N_hidden, 1024)
         self.b1 = np.random.randn(N_hidden, 1)
 
-        self.w2 = np.random.randn(1, N_hidden)  # / N_hidden
+        self.w2 = np.random.randn(1, N_hidden)
         self.b2 = np.random.randn(1, 1)
 
     def epoch(self):
@@ -89,10 +87,10 @@ class CancerClassifier(object):
         self.update(dw1, db1, dw2, db2)
 
     def update(self, dw1, db1, dw2, db2):
-        self.w1 = self.w1 + dw1 * self.STEP_SIZE
-        self.w2 = self.w2 + dw2 * self.STEP_SIZE
-        self.b1 = self.b1 + db1 * self.STEP_SIZE
-        self.b2 = self.b2 + db2 * self.STEP_SIZE
+        self.w1 += dw1 * self.STEP_SIZE
+        self.w2 += dw2 * self.STEP_SIZE
+        self.b1 += db1 * self.STEP_SIZE
+        self.b2 += db2 * self.STEP_SIZE
 
     def validate(self):
         x, y = self.val_data
@@ -133,7 +131,7 @@ class CancerClassifier(object):
             json.dump(trained_dict, f)
 
 
-def ploting(tl, ta, vl, va):
+def plotting(tl, ta, vl, va):
     # this plots the loss and accuracy
     plt.figure(), plt.subplot(211)
     plt.plot(tl, label='train'), plt.plot(vl, label='validation')
@@ -154,9 +152,10 @@ def run_epochs(epochs, trn_loss, trn_acc, val_loss, val_acc):
 
 
 if __name__ == "__main__":
+
     cc = CancerClassifier(*data_load(os.getcwd()))
     trn_loss, trn_acc, val_loss, val_acc = [], [], [], []
     trn_loss, trn_acc, val_loss, val_acc = run_epochs(epochs, trn_loss, trn_acc, val_loss, val_acc)
     # trn_loss, trn_acc, val_loss, val_acc = run_epochs(100, trn_loss, trn_acc, val_loss, val_acc)
-    # cc.to_json(val_acc[-1])
-    ploting(trn_loss, trn_acc, val_loss, val_acc)
+    # cc.to_json(val_acc[-1], filename='fn')
+    plotting(trn_loss, trn_acc, val_loss, val_acc)
