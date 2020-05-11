@@ -1,0 +1,27 @@
+import json
+import os
+
+def make_json(trained_dict, path_to_save):
+    """
+    make json file with trained parameters.
+    W1: numpy arrays of shape (1024, nn_h_dim)
+    W2: numpy arrays of shape (nn_h_dim, 1)
+    b1: numpy arrays of shape (1, nn_h_dim)
+    b2: numpy arrays of shape (1, 1)
+    id1: id1 - int
+    id2: id2 - int
+    activation1: one of only: 'sigmoid', 'tanh', 'ReLU', 'final_act' - str
+    activation2: 'sigmoid' - str
+     number of neirons in hidden layer - int
+    :param nn_h_dim: trained_dict = {'weights': (W1, W2),
+                                    'biases': (b1, b2),
+                                    'nn_hdim': nn_h_dim,
+                                    'activation_1': activation1,
+                                    'activation_2': activation2,
+                                    'IDs': (id1, id2)}
+    """
+    file_path = os.path.join(path_to_save, 'trained_dict_{}_{}'.format(
+        trained_dict.get('IDs')[0], trained_dict.get('IDs')[1])
+                             )
+    with open(file_path, 'w') as f:
+        json.dump(trained_dict, f, indent=4)
