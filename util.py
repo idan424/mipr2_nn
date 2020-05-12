@@ -14,18 +14,18 @@ def data_load(path):
 
 
 def randomize(x, y):
-    rnd = np.arange(x.shape[1])
+    rnd = np.arange(x.shape[0])
     np.random.shuffle(rnd)
-    return x[:, rnd], y[rnd]
+    return x[rnd, :], y[rnd]
 
 
 def load_dir(path):
     picture_list = os.listdir(path)
-    X, Y = np.ndarray([1024, 0]), []
+    X, Y = np.ndarray([0, 1024]), np.array([])
     for pic in picture_list:
-        X = np.c_[X, plt.imread(path + pic).flatten().reshape([1024, 1])]
-        Y.append(int('pos' in pic))
-    return X, np.array(Y)
+        X = np.r_[X, plt.imread(path + pic).reshape([1, 1024])]
+        Y = np.r_[Y, int('pos' in pic)]
+    return X, Y[:, np.newaxis]
 
 
 def relu(x):

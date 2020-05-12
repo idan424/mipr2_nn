@@ -27,10 +27,10 @@ class MSClassifier:
         self.trn_data = x_trn, y_trn
         self.val_data = x_val, y_val
 
-        self.w1 = np.random.randn(N_hidden, 1024)
-        self.b1 = np.random.randn(N_hidden, 1)
+        self.w1 = np.random.randn(1024, N_hidden)
+        self.b1 = np.random.randn(1, N_hidden)
 
-        self.w2 = np.random.randn(1, N_hidden)
+        self.w2 = np.random.randn(N_hidden, 1)
         self.b2 = np.random.randn(1, 1)
 
     def epoch(self):
@@ -44,7 +44,7 @@ class MSClassifier:
 
         for i in range(n_batch):
             start, end = i * mini_batch_size, (i + 1) * mini_batch_size
-            l, a = self.train_batch(x_trn[:, start:end], y_trn[start:end])
+            l, a = self.train_batch(x_trn[start:end, :], y_trn[start:end])
             loss.append(l), acc.append(a)
 
         loss, acc = mean(loss), mean(acc)
@@ -59,11 +59,11 @@ class MSClassifier:
         :return: loss, accuracy
         """
         # layer 1 - input
-        z1 = np.dot(self.w1, x) + self.b1
+        z1 = np.dot(x, self.w1) + self.b1
         a1 = f1(z1)
 
         # layer 2 - hidden
-        z2 = np.dot(self.w2, a1) + self.b2
+        z2 = np.dot(a1, self.w2) + self.b2
         a2 = f2(z2)
 
         self.backpropagate(x, y, z1, a1, z2, a2)
@@ -93,20 +93,20 @@ class MSClassifier:
 
         # layer specific gradients(w, b)
         dz2_dw2 = a1.T  # dz2/dw2
-        dz2_db2 = np.ones([mini_batch_size, 1])  # dz2/db2
+        dz2_db2 = np.ones([1, mini_batch_size])  # dz2/db2
         dz1_dw1 = x.T  # dz1/dw1
-        dz1_db1 = np.ones([mini_batch_size, 1])  # dz1/db1
+        dz1_db1 = np.ones([1, mini_batch_size])  # dz1/db1
 
         # layer 2 gradients
-        dw2 = np.dot(dc_da2 * da2_dz2, dz2_dw2)  # dC/dw2 = dC/da2 * da2/dz2 * dz2/dw2
-        db2 = np.dot(dc_da2 * da2_dz2, dz2_db2)  # dC/db2 = dC/da2 * da2/dz2 * dz2/db2
+        dw2 = np.dot(dz2_dw2, dc_da2 * da2_dz2)  # dC/dw2 = dC/da2 * da2/dz2 * dz2/dw2
+        db2 = np.dot(dz2_db2, dc_da2 * da2_dz2)  # dC/db2 = dC/da2 * da2/dz2 * dz2/db2
 
         # layer transfer gradient
-        dc_da1 = np.dot(dz2_da1, dc_da2 * da2_dz2)
+        dc_da1 = np.dot(dc_da2 * da2_dz2, dz2_da1)
 
         # layer 1 gradients
-        dw1 = np.dot(dc_da1 * da1_dz1, dz1_dw1)  # dC/dw1 = dC/da1 * da1/dz1 * dz1/dw1
-        db1 = np.dot(dc_da1 * da1_dz1, dz1_db1)  # dC/db1 = dC/da1 * da1/dz1 * dz1/db1
+        dw1 = np.dot(dz1_dw1, dc_da1 * da1_dz1)  # dC/dw1 = dC/da1 * da1/dz1 * dz1/dw1
+        db1 = np.dot(dz1_db1, dc_da1 * da1_dz1)  # dC/db1 = dC/da1 * da1/dz1 * dz1/db1
 
         # actual descent
         self.update(dw1, db1, dw2, db2)
@@ -130,8 +130,8 @@ class MSClassifier:
         :return: loss, accuracy
         """
         x, y = self.val_data
-        a1 = f1(np.dot(self.w1, x) + self.b1)  # layer 1
-        a2 = f2(np.dot(self.w2, a1) + self.b2)  # layer 2
+        a1 = f1(np.dot(x, self.w1) + self.b1)  # layer 1
+        a2 = f2(np.dot(a1, self.w2) + self.b2)  # layer 2
         # computing loss and accuracy
         loss = np.mean(floss(a2, y))
         acc = np.mean(1 - abs(y - np.vectorize(round)(a2)))
@@ -170,12 +170,12 @@ def plotting(tl: list, ta: list, vl: list, va: list):
     :param va: validation accuracy
     """
     plt.figure(), plt.subplot(211)
-    plt.plot(tl, label='train'), plt.plot(vl, label='validation')
-    plt.title("loss"), plt.legend(), plt.xlabel("epochs"), plt.ylabel("precents")
+    plt.plot(tl, label='Train'), plt.plot(vl, label='Validation')
+    plt.title("Loss"), plt.legend(), plt.xlabel("Epochs"), plt.ylabel("Precents")
     plt.subplot(212)
-    plt.plot(ta, label='train'), plt.plot(va, label='validation')
-    plt.title("acc"), plt.legend(), plt.xlabel("epochs"), plt.ylabel("precents")
-    plt.show()
+    plt.plot(ta, label='Train'), plt.plot(va, label='Validation')
+    plt.title("Accuracy"), plt.legend(), plt.xlabel("Epochs"), plt.ylabel("Precents")
+    plt.tight_layout(), plt.show()
 
 
 def run_epochs(ep: int, trn_loss: list, trn_acc: list, val_loss: list, val_acc: list):
@@ -193,6 +193,8 @@ def run_epochs(ep: int, trn_loss: list, trn_acc: list, val_loss: list, val_acc: 
         tl, ta = cc.epoch()
         vl, va = cc.validate()
         trn_loss.append(tl), trn_acc.append(ta), val_loss.append(vl), val_acc.append(va)
+        # TODO: implement best model save option
+        #  if va == min(val_acc): best_model = cc.copy_current_state()
     return trn_loss, trn_acc, val_loss, val_acc
 
 
@@ -200,6 +202,6 @@ if __name__ == "__main__":
     cc = MSClassifier(*data_load(os.getcwd()))
     loss_acc = [], [], [], []
     loss_acc = run_epochs(epochs, *loss_acc)
-    # trn_loss, trn_acc, val_loss, val_acc = run_epochs(100, trn_loss, trn_acc, val_loss, val_acc)
-    # cc.to_json(val_acc[-1], filename='fn')
     plotting(*loss_acc)
+    # trn_loss, trn_acc, val_loss, val_acc = run_epochs(100, *loss_acc)
+    # cc.to_json(val_acc[-1], filename='fn')
