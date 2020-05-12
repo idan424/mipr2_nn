@@ -1,9 +1,10 @@
 import numpy as np
 import os
 import matplotlib.pyplot as plt
+from statistics import mean
 
-mean = lambda x: sum(x) / len(x)
 floss, dfloss = lambda y, yp: (y - yp) ** 2, lambda y, yp: (y - yp) * 2
+facc = lambda y, yp: 1 - np.mean(abs(y - np.vectorize(round)(yp)))
 
 
 def data_load(path):

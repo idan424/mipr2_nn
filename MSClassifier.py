@@ -1,10 +1,11 @@
 from util import *
 
 # initializing hyper parameters here
-N_hidden = 12  # bigger is slower
-mini_batch_size = 32  # bigger is faster
-STEP_SIZE = 1e-3  # changes with respect to validation loss - see CancerClassifier.validate()
-epochs = 600  # total number of epochs
+batch_size: int = 128  # bigger is faster
+N_hidden: int = 12  # bigger is slower
+
+STEP_SIZE: float = 1e-3  # changes with respect to validation loss - see CancerClassifier.validate()
+MIN_ACCURACY = 0.89  # minimum accuracy to save a model
 
 # calling activation functions
 f1, df1 = np.vectorize(leaky_relu), np.vectorize(dleaky_relu)  # acts on z1
@@ -12,7 +13,10 @@ f2, df2 = np.vectorize(sigmoid), np.vectorize(dsigmoid)  # acts on z2
 
 
 class MSClassifier:
-    __slots__ = ['STEP_SIZE', 'trn_data', 'val_data', 'w1', 'b1', 'w2', 'b2']
+    __slots__ = ['STEP_SIZE', 'trn_data', 'val_data',
+                 'w1', 'b1', 'w2', 'b2',
+                 'loss_acc',
+                 'best_dict', 'best_acc']
 
     def __init__(self, x_trn: np.ndarray, y_trn: np.ndarray, x_val: np.ndarray, y_val: np.ndarray):
         """
@@ -33,17 +37,21 @@ class MSClassifier:
         self.w2 = np.random.randn(N_hidden, 1)
         self.b2 = np.random.randn(1, 1)
 
+        self.loss_acc = [], [], [], []  # train_loss, train_acc, valid_loss, valid_acc
+
+        self.best_dict, self.best_acc = {}, 0.0
+
     def epoch(self):
         """
         iterates over all training data once
         :return: loss, accuracy
         """
         x_trn, y_trn = randomize(*self.trn_data)  # randomizing data order - <!><!><!>crucial for convergance<!><!><!>
-        n_batch = int(y_trn.shape[0] / mini_batch_size)
+        n_batch = int(y_trn.shape[0] / batch_size)
         loss, acc = [], []
 
         for i in range(n_batch):
-            start, end = i * mini_batch_size, (i + 1) * mini_batch_size
+            start, end = i * batch_size, (i + 1) * batch_size
             l, a = self.train_batch(x_trn[start:end, :], y_trn[start:end])
             loss.append(l), acc.append(a)
 
@@ -70,7 +78,7 @@ class MSClassifier:
 
         # computing batch loss and accuracy
         loss = np.mean(floss(y, a2))
-        acc = 1 - np.sum(abs(y - np.vectorize(thresh)(a2))) / mini_batch_size
+        acc = facc(y, a2)
         return loss, acc
 
     def backpropagate(self, x: np.ndarray, y: np.ndarray,
@@ -93,9 +101,9 @@ class MSClassifier:
 
         # layer specific gradients(w, b)
         dz2_dw2 = a1.T  # dz2/dw2
-        dz2_db2 = np.ones([1, mini_batch_size])  # dz2/db2
+        dz2_db2 = np.ones([1, batch_size])  # dz2/db2
         dz1_dw1 = x.T  # dz1/dw1
-        dz1_db1 = np.ones([1, mini_batch_size])  # dz1/db1
+        dz1_db1 = np.ones([1, batch_size])  # dz1/db1
 
         # layer 2 gradients
         dw2 = np.dot(dz2_dw2, dc_da2 * da2_dz2)  # dC/dw2 = dC/da2 * da2/dz2 * dz2/dw2
@@ -124,7 +132,7 @@ class MSClassifier:
         self.b1 += db1 * self.STEP_SIZE
         self.b2 += db2 * self.STEP_SIZE
 
-    def validate(self):
+    def validate(self, save_best_flag: bool = False):
         """
         assesses the models accuracy and loss on validation data
         :return: loss, accuracy
@@ -133,32 +141,65 @@ class MSClassifier:
         a1 = f1(np.dot(x, self.w1) + self.b1)  # layer 1
         a2 = f2(np.dot(a1, self.w2) + self.b2)  # layer 2
         # computing loss and accuracy
-        loss = np.mean(floss(a2, y))
-        acc = np.mean(1 - abs(y - np.vectorize(round)(a2)))
-
+        loss = np.mean(floss(y, a2))
+        acc = facc(y, a2)
         print(f'total val loss: {loss:.5f}, total val accuracy: {acc:.5f}\n')
         return loss, acc
 
-    def to_json(self, va: float, filename: str = None):
+    def to_json(self, acc: float = None, filename: str = None, trained_dict: dict = None):
         """
         saves a dictionary with relevant values
-        :param va: validation accuracy
+        :param trained_dict:
+        :param acc: validation accuracy
         :param filename: save to a file named {filename}
-        :return:
+        :param trained_dict: a dictionary of the trained model
         """
         # this function saves a json version of the dict in to a file
         import json
         import datetime as dt
-        trained_dict = {
+        if acc is None:
+            if self.best_acc > 0.89:
+                acc = self.best_acc
+            else:
+                acc = self.loss_acc[3][-1]
+        if trained_dict is None: trained_dict = self.to_dict()
+        if filename is None:
+            filename = f'models/model_{dt.datetime.now().strftime("%d-%m-%Y_%H-%M-%S")}' \
+                       f'_val_acc_{acc:.3f}_(NN,bs)=({N_hidden},{batch_size}.json)'
+        with open(filename, 'w') as f:
+            json.dump(trained_dict, f)
+
+    def to_dict(self):
+        return {
             'weights': (self.w1.tolist(), self.w2.tolist()),
             'biases': (self.b1.tolist(), self.b2.tolist()),
             'nn_dim': N_hidden,
             'actication1': 'leaky_relu',
             'actication2': 'sigmoid',
             'IDs': ('305713034', '207127986')}
-        if filename is None: filename = f'models/model_{dt.datetime.now().strftime("%d-%m-%Y_%H-%M-%S")}_val_acc_{va:.3f}'
-        with open(filename, 'w') as f:
-            json.dump(trained_dict, f)
+
+    def run_epochs(self, ep: int, save_best_flag: bool = False):
+        """
+        training on all the training data {epochs} times
+        :param save_best_flag:
+        :param ep: number of training sessions on all of the data
+        :return: input args without epochs
+        """
+        for i in range(ep):
+            print(f"run number: {i + 1}/{ep}")
+            tl, ta = cc.epoch()
+            vl, va = cc.validate(save_best_flag)
+            self.loss_acc[0].append(tl), self.loss_acc[1].append(ta)
+            self.loss_acc[2].append(vl), self.loss_acc[3].append(va)
+            if save_best_flag and self.loss_acc[3][-1] > max(MIN_ACCURACY, self.best_acc):
+                self.best_dict, self.best_acc = self.get_best_model_dict(), self.loss_acc[3][-1]
+
+        if save_best_flag and self.best_acc >= 0.89: self.to_json(acc=self.best_acc, trained_dict=self.best_dict)
+
+        print(f'best val accuracy: {self.best_acc:.5f}\n')
+
+    def get_best_model_dict(self):
+        if self.loss_acc[3][-1] > self.best_acc: return self.to_dict()
 
 
 def plotting(tl: list, ta: list, vl: list, va: list):
@@ -178,30 +219,9 @@ def plotting(tl: list, ta: list, vl: list, va: list):
     plt.tight_layout(), plt.show()
 
 
-def run_epochs(ep: int, trn_loss: list, trn_acc: list, val_loss: list, val_acc: list):
-    """
-    training on all the training data {epochs} times
-    :param ep: number of training sessions on all of the data
-    :param trn_loss: training loss
-    :param trn_acc: training accuracy
-    :param val_loss: validation loss
-    :param val_acc: validation accuracy
-    :return: input args without epochs
-    """
-    for i in range(ep):
-        print(f"run number: {i + 1}/{ep}")
-        tl, ta = cc.epoch()
-        vl, va = cc.validate()
-        trn_loss.append(tl), trn_acc.append(ta), val_loss.append(vl), val_acc.append(va)
-        # TODO: implement best model save option
-        #  if va == min(val_acc): best_model = cc.copy_current_state()
-    return trn_loss, trn_acc, val_loss, val_acc
-
-
 if __name__ == "__main__":
+    epochs = 1000
     cc = MSClassifier(*data_load(os.getcwd()))
-    loss_acc = [], [], [], []
-    loss_acc = run_epochs(epochs, *loss_acc)
-    plotting(*loss_acc)
-    # trn_loss, trn_acc, val_loss, val_acc = run_epochs(100, *loss_acc)
-    # cc.to_json(val_acc[-1], filename='fn')
+    cc.run_epochs(epochs, save_best_flag=True)
+    # plotting(*cc.loss_acc)
+    # cc.run_epochs(100, save_best_flag=True)
