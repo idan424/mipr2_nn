@@ -1,9 +1,5 @@
 from util import *
 
-# initializing hyper parameters here
-batch_size: int = 128  # bigger is faster
-N_hidden: int = 12  # bigger is slower
-
 STEP_SIZE: float = 1e-3  # changes with respect to validation loss - see CancerClassifier.validate()
 MIN_ACCURACY = 0.89  # minimum accuracy to save a model
 
@@ -16,9 +12,11 @@ class MSClassifier:
     __slots__ = ['STEP_SIZE', 'trn_data', 'val_data',
                  'w1', 'b1', 'w2', 'b2',
                  'loss_acc',
-                 'best_dict', 'best_acc']
+                 'best_dict', 'best_acc',
+                 'batch_size', 'N_hidden']
 
-    def __init__(self, x_trn: np.ndarray, y_trn: np.ndarray, x_val: np.ndarray, y_val: np.ndarray):
+    def __init__(self, x_trn: np.ndarray, y_trn: np.ndarray, x_val: np.ndarray, y_val: np.ndarray,
+                 bs: int, nh: int):
         """
         initializing an instance
         :param x_trn: training data
@@ -27,14 +25,16 @@ class MSClassifier:
         :param y_val: validation labels
         """
         self.STEP_SIZE = STEP_SIZE
+        self.batch_size = bs
+        self.N_hidden = nh
 
         self.trn_data = x_trn, y_trn
         self.val_data = x_val, y_val
 
-        self.w1 = np.random.randn(1024, N_hidden)
-        self.b1 = np.random.randn(1, N_hidden)
+        self.w1 = np.random.randn(1024, self.N_hidden)
+        self.b1 = np.random.randn(1, self.N_hidden)
 
-        self.w2 = np.random.randn(N_hidden, 1)
+        self.w2 = np.random.randn(self.N_hidden, 1)
         self.b2 = np.random.randn(1, 1)
 
         self.loss_acc = [], [], [], []  # train_loss, train_acc, valid_loss, valid_acc
@@ -47,23 +47,21 @@ class MSClassifier:
         :return: loss, accuracy
         """
         x_trn, y_trn = randomize(*self.trn_data)  # randomizing data order - <!><!><!>crucial for convergance<!><!><!>
-        n_batch = int(y_trn.shape[0] / batch_size)
+        n_batch = int(y_trn.shape[0] / self.batch_size)
         loss, acc = [], []
 
         for i in range(n_batch):
-            start, end = i * batch_size, (i + 1) * batch_size
+            start, end = i * self.batch_size, (i + 1) * self.batch_size
             l, a = self.train_batch(x_trn[start:end, :], y_trn[start:end])
             loss.append(l), acc.append(a)
 
-        loss, acc = mean(loss), mean(acc)
-        print(f'epoch loss: {loss:.5f}, epoch accuracy: {acc:.5f}')
-        return loss, acc
+        return mean(loss), mean(acc)
 
     def train_batch(self, x: np.ndarray, y: np.ndarray):
         """
         trains a mini batch of data
-        :param x: array with shape [1024, mini_batch_size]
-        :param y: array with shape [1, mini_batch_size]
+        :param x: array with shape [1024, mini_self.batch_size]
+        :param y: array with shape [1, mini_self.batch_size]
         :return: loss, accuracy
         """
         # layer 1 - input
@@ -101,9 +99,9 @@ class MSClassifier:
 
         # layer specific gradients(w, b)
         dz2_dw2 = a1.T  # dz2/dw2
-        dz2_db2 = np.ones([1, batch_size])  # dz2/db2
+        dz2_db2 = np.ones([1, self.batch_size])  # dz2/db2
         dz1_dw1 = x.T  # dz1/dw1
-        dz1_db1 = np.ones([1, batch_size])  # dz1/db1
+        dz1_db1 = np.ones([1, self.batch_size])  # dz1/db1
 
         # layer 2 gradients
         dw2 = np.dot(dz2_dw2, dc_da2 * da2_dz2)  # dC/dw2 = dC/da2 * da2/dz2 * dz2/dw2
@@ -143,7 +141,7 @@ class MSClassifier:
         # computing loss and accuracy
         loss = np.mean(floss(y, a2))
         acc = facc(y, a2)
-        print(f'total val loss: {loss:.5f}, total val accuracy: {acc:.5f}\n')
+
         return loss, acc
 
     def to_json(self, acc: float = None, filename: str = None, trained_dict: dict = None):
@@ -165,7 +163,7 @@ class MSClassifier:
         if trained_dict is None: trained_dict = self.to_dict()
         if filename is None:
             filename = f'models/model_{dt.datetime.now().strftime("%d-%m-%Y_%H-%M-%S")}' \
-                       f'_val_acc_{acc:.3f}_(NN,bs)=({N_hidden},{batch_size}.json)'
+                       f'_val_acc_{acc:.3f}_(NN,bs)=({self.N_hidden},{self.batch_size}).json'
         with open(filename, 'w') as f:
             json.dump(trained_dict, f)
 
@@ -173,30 +171,37 @@ class MSClassifier:
         return {
             'weights': (self.w1.tolist(), self.w2.tolist()),
             'biases': (self.b1.tolist(), self.b2.tolist()),
-            'nn_dim': N_hidden,
+            'nn_dim': self.N_hidden,
             'actication1': 'leaky_relu',
             'actication2': 'sigmoid',
             'IDs': ('305713034', '207127986')}
 
-    def run_epochs(self, ep: int, save_best_flag: bool = False):
+    def run_epochs(self, ep: int, save_best_flag: bool = False, print_acc_loss: bool = False):
         """
         training on all the training data {epochs} times
-        :param save_best_flag:
         :param ep: number of training sessions on all of the data
-        :return: input args without epochs
+        :param print_acc_loss:
+        :param save_best_flag:
         """
         for i in range(ep):
-            print(f"run number: {i + 1}/{ep}")
-            tl, ta = cc.epoch()
-            vl, va = cc.validate(save_best_flag)
+            print(f"run number: {i + 1}/{ep}", end='\r')
+
+            tl, ta = self.epoch()
+            vl, va = self.validate(save_best_flag)
+
+            if print_acc_loss:
+                print(f'epoch loss: {tl:.5f}, epoch accuracy: {ta:.5f}')
+                print(f'total val loss: {vl:.5f}, total val accuracy: {va:.5f}')
+
             self.loss_acc[0].append(tl), self.loss_acc[1].append(ta)
             self.loss_acc[2].append(vl), self.loss_acc[3].append(va)
+
             if save_best_flag and self.loss_acc[3][-1] > max(MIN_ACCURACY, self.best_acc):
                 self.best_dict, self.best_acc = self.get_best_model_dict(), self.loss_acc[3][-1]
-
-        if save_best_flag and self.best_acc >= 0.89: self.to_json(acc=self.best_acc, trained_dict=self.best_dict)
-
-        print(f'best val accuracy: {self.best_acc:.5f}\n')
+        print(f'epoch loss: {self.loss_acc[0][-1]:.5f}, epoch accuracy: {self.loss_acc[1][-1]:.5f}')
+        print(f'total val loss: {self.loss_acc[2][-1]:.5f}, total val accuracy: {self.loss_acc[3][-1]:.5f}')
+        if save_best_flag and self.best_acc >= 0.90: self.to_json(acc=self.best_acc, trained_dict=self.best_dict)
+        print(f'best val accuracy: {self.best_acc:.5f}')
 
     def get_best_model_dict(self):
         if self.loss_acc[3][-1] > self.best_acc: return self.to_dict()
@@ -220,8 +225,11 @@ def plotting(tl: list, ta: list, vl: list, va: list):
 
 
 if __name__ == "__main__":
+    # initializing hyper parameters here
     epochs = 1000
-    cc = MSClassifier(*data_load(os.getcwd()))
-    cc.run_epochs(epochs, save_best_flag=True)
-    # plotting(*cc.loss_acc)
-    # cc.run_epochs(100, save_best_flag=True)
+    batch_size = 128
+    N_hidden = 12
+    msc = MSClassifier(*data_load(os.getcwd()), batch_size, N_hidden)
+    msc.run_epochs(epochs, save_best_flag=True)
+    # plotting(*msc.loss_acc)
+    # msc.run_epochs(100, save_best_flag=True)
