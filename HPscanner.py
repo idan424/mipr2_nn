@@ -3,11 +3,12 @@ import time
 import sys
 
 epochs = 1000
-NUM_RUNS_PER_HP_SET = 1
+NUM_HP_EPOCH = 30  # a HP_EPOCH is an epoch in which all of the HP combinations have been scaned
 # time took to complete 36 runs: 8 minutes and 27 seconds
 # iterated over (N_hiddens = range(8, 17) @ batch_sizes = [16, 32, 64, 128])
 N_hiddens = range(8, 17)
 batch_sizes = [16, 32, 64, 128]
+RUNS = len(N_hiddens) * len(batch_sizes) * NUM_HP_EPOCH
 
 
 def check_dirs(models_dir):
@@ -38,13 +39,13 @@ def sort_files():
         os.replace(f'{models_dir}\\{file}', f'{models_dir}\\{dirname}\\{file}')
 
 
-def scan_hp(sleep=0):
+def scan_hp(sleep=0, runs=0):
     run = 0
-    for nh in N_hiddens:
-        for bs in batch_sizes:
-            for i in range(NUM_RUNS_PER_HP_SET):
+    for i in range(NUM_HP_EPOCH):
+        for nh in N_hiddens:
+            for bs in batch_sizes:
                 run += 1
-                print(f'run: {run}/{runs} - NN_{nh}_batch_{bs} - trial: {i + 1}/{NUM_RUNS_PER_HP_SET}')
+                print(f'HPrun: {run}/{runs} - NN_{nh}_batch_{bs} - HPepoch: {i + 1}/{NUM_HP_EPOCH}')
                 mdl = MSClassifier(*data_load(os.getcwd()), bs, nh)  # data, batch_size, n_hidden
                 mdl.run_epochs(epochs, save_best_flag=True)
                 print('*' * 30)
@@ -62,24 +63,26 @@ def get_max_acc_file(direc):
 
 def get_max_acc_dict(models_dir=f'{os.getcwd()}\\models'):
     dirs = os.listdir(models_dir)
-    max_dict, best_acc_dir = {}, (0, "")
+    max_dict, best_dir_acc = {}, ("", 0)
 
     for direc in dirs:
         max_file_acc = get_max_acc_file(f'{models_dir}\\{direc}')
-        if max_file_acc is not None and best_acc_dir[0] < max_file_acc:
-            best_acc_dir = (max_file_acc, direc)
+        if max_file_acc is not None and best_dir_acc[1] < max_file_acc:
+            best_dir_acc = (direc, max_file_acc)
         max_dict[direc] = max_file_acc
 
-    return max_dict, best_acc_dir
+    return max_dict, best_dir_acc
 
 
-if __name__ == '__main__':
-    runs = len(N_hiddens) * len(batch_sizes) * NUM_RUNS_PER_HP_SET
-    slp = 0
-
+def train(slp, runs):
+    print(f'starting {runs} runs')
     start = time.time()
-    scan_hp(slp)
+    scan_hp(slp, runs)
     total = time.time() - (start + slp * runs)
     print(f'time took to run {runs} runs: {total:.3f} seconds')
 
-    d, best_acc_dir = get_max_acc_dict()
+
+if __name__ == '__main__':
+    # train(slp=0, runs=RUNS)
+    d, best = get_max_acc_dict()
+    print(best)
