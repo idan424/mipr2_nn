@@ -1,7 +1,7 @@
 from util import *
 
 STEP_SIZE: float = 1e-3  # changes with respect to validation loss - see CancerClassifier.validate()
-MIN_ACCURACY = 0.89  # minimum accuracy to save a model
+MIN_ACCURACY = 0.95  # minimum accuracy to save a model
 
 # calling activation functions
 f1, df1 = np.vectorize(leaky_relu), np.vectorize(dleaky_relu)  # acts on z1
@@ -227,9 +227,9 @@ def plotting(tl: list, ta: list, vl: list, va: list):
 if __name__ == "__main__":
     # initializing hyper parameters here
     epochs = 1000
-    batch_size = 128
-    N_hidden = 12
+    batch_size = 16
+    N_hidden = 9
     msc = MSClassifier(*data_load(os.getcwd()), batch_size, N_hidden)
     msc.run_epochs(epochs, save_best_flag=True)
-    # plotting(*msc.loss_acc)
+    plotting(*msc.loss_acc)
     # msc.run_epochs(100, save_best_flag=True)

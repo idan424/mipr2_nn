@@ -53,6 +53,19 @@ def scan_hp(sleep=0, runs=0):
                 sort_files()
 
 
+def cont_scan_hp():
+    run = 0
+    while True:
+        for nh in N_hiddens:
+            for bs in batch_sizes:
+                run += 1
+                print(f'HPrun: {run} - NN_{nh}_batch_{bs}')
+                mdl = MSClassifier(*data_load(os.getcwd()), bs, nh)  # data, batch_size, n_hidden
+                mdl.run_epochs(epochs, save_best_flag=True)
+                print('*' * 30)
+                sort_files()
+
+
 def get_max_acc_file(direc):
     accs = []
     for file in os.listdir(direc):
@@ -84,5 +97,7 @@ def train(slp, runs):
 
 if __name__ == '__main__':
     # train(slp=0, runs=RUNS)
+    # cont_scan_hp()
     d, best = get_max_acc_dict()
     print(best)
+
