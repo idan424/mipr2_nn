@@ -172,8 +172,8 @@ class MSClassifier:
             'weights': (self.w1.tolist(), self.w2.tolist()),
             'biases': (self.b1.tolist(), self.b2.tolist()),
             'nn_dim': self.N_hidden,
-            'actication1': 'leaky_relu',
-            'actication2': 'sigmoid',
+            'activation1': 'leaky_relu',
+            'activation2': 'sigmoid',
             'IDs': ('305713034', '207127986')}
 
     def run_epochs(self, ep: int, save_best_flag: bool = False, print_acc_loss: bool = False):
